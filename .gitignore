@@ -1,13 +1,13 @@
 # Google OAuth
-GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=308308130285-a74k2k86p9q2ts4dilumal5i9tm94b05.apps.googleusercontent.com
 
 # Domain Enforcement
 SCHOOL_EMAIL_DOMAIN=mef.edu.tr
 
 # Database connection (update user/password to your local Postgres credentials)
-DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/inclass_db
+DATABASE_URL=postgresql://postgres:ABC1234!@localhost:5432/inclass_db
 
 # Security
-JWT_SECRET=a_very_long_and_secure_random_string
+JWT_SECRET=Y6wNc1l7twvtVc-iOZAXnldS0WZ-ADFSyAjiwr7662A
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=60
