@@ -1,0 +1,13 @@
+# Google OAuth
+GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+
+# Domain Enforcement
+SCHOOL_EMAIL_DOMAIN=mef.edu.tr
+
+# Database connection (update user/password to your local Postgres credentials)
+DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/inclass_db
+
+# Security
+JWT_SECRET=a_very_long_and_secure_random_string
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=60
