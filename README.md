@@ -3,7 +3,7 @@
 US-B setup deliverables for Team Member 2 are implemented in this repository:
 
 - Supabase schema SQL: `db/supabase_schema.sql`
-- Student auth verification logic: `auth_service.py` (`fetch_registered_student_by_email`)
+- Student auth verification logic: `app/services.py` (`fetch_registered_student_by_email`)
 - Student login endpoint: `POST /auth/google/student`
 - DB connectivity check endpoint: `GET /health/db`
 
@@ -12,7 +12,11 @@ US-B setup deliverables for Team Member 2 are implemented in this repository:
 1. Open Supabase project dashboard.
 2. Go to SQL Editor.
 3. Paste and run the full file from `db/supabase_schema.sql`.
-4. Confirm these tables exist: `users`, `courses`, `instructor_course_mapping`, `activities`.
+4. Confirm these tables exist: `users`, `courses`, `instructor_course_mapping`, `student_course_mapping`, `activities`.
+
+If your database was already initialized before this update, also run:
+
+- `db/migrations/2026-04-26_us_b_schema_patch.sql`
 
 ## 2) Configure environment
 
@@ -29,7 +33,7 @@ Install dependencies and run:
 
 ```bash
 pip install -r requirements.txt
-uvicorn auth_service:app --reload
+uvicorn app.main:app --reload
 ```
 
 ## 4) Verify Definition of Done
