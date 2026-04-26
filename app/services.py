@@ -33,6 +33,33 @@ async def fetch_user_by_email(pool: asyncpg.Pool, email: str) -> asyncpg.Record:
     return row
 
 
+async def fetch_user_by_id(pool: asyncpg.Pool, user_id: str) -> asyncpg.Record:
+    """
+    Query the users table for the user id stored in a signed JWT subject.
+    """
+    query = """
+        SELECT id, school_email, role, created_at
+        FROM   users
+        WHERE  id::text = $1
+        LIMIT  1
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(query, str(user_id))
+
+    if row is None:
+        logger.warning("No user record found for id=%s", user_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "Your user account is not yet registered on the InClass Platform. "
+                "Please contact your instructor or platform administrator."
+            ),
+        )
+
+    logger.info("User found: id=%s role=%s", row["id"], row["role"])
+    return row
+
+
 async def fetch_registered_student_by_email(
     pool: asyncpg.Pool,
     email: str,
@@ -61,4 +88,35 @@ async def fetch_registered_student_by_email(
         )
 
     logger.info("Student verified: id=%s email=%s", row["id"], row["school_email"])
+    return row
+
+
+async def fetch_registered_instructor_by_email(
+    pool: asyncpg.Pool,
+    email: str,
+) -> asyncpg.Record:
+    """
+    Ensure there is an instructor record for the provided school email.
+    """
+    query = """
+        SELECT id, school_email, role, created_at
+        FROM   users
+        WHERE  school_email = $1
+          AND  role = 'instructor'
+        LIMIT  1
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(query, email.lower())
+
+    if row is None:
+        logger.warning("Instructor auth rejected; no user record for email=%s", email)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "No registered instructor account was found for this school email. "
+                "Please contact your platform administrator."
+            ),
+        )
+
+    logger.info("Instructor verified: id=%s email=%s", row["id"], row["school_email"])
     return row
