@@ -12,8 +12,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 from urllib.parse import parse_qs
 
-import asyncpg
 from dotenv import load_dotenv
+
+load_dotenv()
+
+import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -22,8 +25,12 @@ from google.oauth2 import id_token as google_id_token
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
+from app import services
 from app.services import (
+    JWT_ALGORITHM,
+    JWT_SECRET,
     changeInstructorPassword,
+    create_access_token,
     fetch_instructor_courses,
     fetch_password_hash_by_email,
     fetch_registered_instructor_by_email,
@@ -35,16 +42,10 @@ from app.services import (
     setInstructorPassword,
     update_user_password,
 )
-from passlib.context import CryptContext
-
-load_dotenv()
 
 GOOGLE_CLIENT_ID: str = os.environ["GOOGLE_CLIENT_ID"]
 SCHOOL_EMAIL_DOMAIN: str = os.environ["SCHOOL_EMAIL_DOMAIN"]
 DATABASE_URL: str = os.environ["DATABASE_URL"]
-JWT_SECRET: str = os.environ["JWT_SECRET"]
-JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("inclass.auth")
@@ -58,7 +59,9 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup() -> None:
-    app.state.db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    app.state.db_pool = pool
+    services.db_pool = pool
     logger.info("Database connection pool created.")
 
 
@@ -114,33 +117,7 @@ class InstructorChangePasswordRequest(BaseModel):
     new_password: str
 
 
-class PasswordHasher:
-    """
-    @brief Hashes and verifies passwords using bcrypt via CryptContext.
-    @details Provides class methods to generate secure password hashes and check
-             plain-text inputs against stored hashes for authentication.
-    """
 
-    _context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-    @classmethod
-    def hash(cls, password: str) -> str:
-        """
-        @brief Hashes a plain-text password using bcrypt.
-        @param password The plain-text password to hash.
-        @return The hashed password string.
-        """
-        return cls._context.hash(password)
-
-    @classmethod
-    def verify(cls, plain_password: str, hashed_password: str) -> bool:
-        """
-        @brief Verifies a plain-text password against a hashed password.
-        @param plain_password The plain-text password to check.
-        @param hashed_password The hashed password to verify against.
-        @return True if the password matches, False otherwise.
-        """
-        return cls._context.verify(plain_password, hashed_password)
 
 
 def verify_google_id_token(raw_token: str) -> dict:
@@ -183,25 +160,7 @@ def enforce_school_email(email: str) -> None:
         )
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
-    """
-    @brief Generates a signed JWT access token for a user.
-    @param user_id The unique ID of the user.
-    @param email The user's school email.
-    @param role The role assigned to the user.
-    @return A string representing the encoded JWT.
-    """
-    now = datetime.now(tz=timezone.utc)
-    payload = {
-        "sub": user_id,
-        "email": email,
-        "role": role,
-        "iat": now,
-        "exp": now + timedelta(minutes=JWT_EXPIRE_MINUTES),
-    }
-    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    logger.info("JWT issued for user_id=%s role=%s", user_id, role)
-    return token
+
 
 
 @app.post(
