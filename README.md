@@ -51,7 +51,16 @@ SECURITY WARNING: In a real production application, this fallback should be
 removed or replaced with real password validation because it can allow "ghost
 login" behavior.
 
-## 4) Verify Definition of Done
+## 4) Documentation Generation
+
+This project uses Doxygen for documentation. To generate the HTML documentation:
+
+- **Windows**: Run `./doxy.ps1`
+- **Linux**: Run `./doxy.sh`
+
+The generated documentation will be available in `docs/gen/html/index.html`.
+
+## 5) Verify Definition of Done
 
 ### A. Database URL is working
 
