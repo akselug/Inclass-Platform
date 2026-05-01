@@ -31,6 +31,7 @@ from app.services import (
     JWT_SECRET,
     changeInstructorPassword,
     create_access_token,
+    end_activity,
     fetch_instructor_courses,
     fetch_password_hash_by_email,
     fetch_registered_instructor_by_email,
@@ -40,6 +41,7 @@ from app.services import (
     instructorLogin,
     listMyCourses,
     setInstructorPassword,
+    start_activity,
     update_user_password,
 )
 
@@ -605,6 +607,62 @@ async def api_change_instructor_password(
         password=password,
         old_password=body.old_password,
         new_password=body.new_password,
+    )
+
+
+@app.post(
+    "/instructor/activity/start",
+    summary="Start an activity",
+    tags=["Instructor"],
+)
+async def api_start_activity(
+    course_id: str,
+    activity_no: int,
+    current_user: dict = Depends(verify_instructor),
+) -> dict:
+    """
+    @brief Starts an activity by transitioning state from DRAFT to ACTIVE.
+    @param course_id The target course identifier.
+    @param activity_no The activity number unique within the course.
+    @param current_user Authenticated instructor identity from verify_instructor.
+    @return A dictionary describing the successful state transition.
+    @throws HTTPException 403 If instructor-course authorization fails.
+    @throws HTTPException 404 If activity is not found.
+    @throws HTTPException 409 If activity is not currently in DRAFT state.
+    """
+    return await start_activity(
+        pool=app.state.db_pool,
+        instructor_id=current_user["user_id"],
+        course_id=course_id,
+        activity_no=activity_no,
+    )
+
+
+@app.post(
+    "/instructor/activity/end",
+    summary="End an activity",
+    tags=["Instructor"],
+)
+async def api_end_activity(
+    course_id: str,
+    activity_no: int,
+    current_user: dict = Depends(verify_instructor),
+) -> dict:
+    """
+    @brief Ends an activity by transitioning state from ACTIVE to ENDED.
+    @param course_id The target course identifier.
+    @param activity_no The activity number unique within the course.
+    @param current_user Authenticated instructor identity from verify_instructor.
+    @return A dictionary describing the successful state transition.
+    @throws HTTPException 403 If instructor-course authorization fails.
+    @throws HTTPException 404 If activity is not found.
+    @throws HTTPException 409 If activity is not currently in ACTIVE state.
+    """
+    return await end_activity(
+        pool=app.state.db_pool,
+        instructor_id=current_user["user_id"],
+        course_id=course_id,
+        activity_no=activity_no,
     )
 
 

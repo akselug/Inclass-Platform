@@ -410,3 +410,170 @@ async def changeInstructorPassword(
         )
 
     return {"status": "success", "message": "Password changed successfully."}
+
+
+async def _ensure_instructor_assigned_to_course(
+    pool: asyncpg.Pool,
+    instructor_id: str,
+    course_id: str,
+) -> None:
+    """
+    @brief Validates instructor-course authorization for activity state operations.
+    @param pool The asyncpg connection pool instance.
+    @param instructor_id The authenticated instructor identifier.
+    @param course_id The target course identifier.
+    @return None.
+    @throws HTTPException 403 If instructor is not assigned to the provided course.
+    """
+    query = """
+        SELECT 1
+        FROM   instructor_course_mapping
+        WHERE  instructor_id::text = $1
+          AND  course_id::text = $2
+        LIMIT 1
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(query, str(instructor_id), str(course_id))
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Instructor is not authorized for the target course.",
+        )
+
+
+async def _fetch_activity_status(
+    pool: asyncpg.Pool,
+    course_id: str,
+    activity_no: int,
+) -> str:
+    """
+    @brief Retrieves the current status of a course activity by course_id and activity_no.
+    @param pool The asyncpg connection pool instance.
+    @param course_id The target course identifier.
+    @param activity_no The activity number unique within the course.
+    @return The current activity status value.
+    @throws HTTPException 404 If no matching activity exists.
+    """
+    query = """
+        SELECT status
+        FROM   activities
+        WHERE  course_id::text = $1
+          AND  activity_no = $2
+        LIMIT 1
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(query, str(course_id), int(activity_no))
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Activity not found for the specified course and activity number.",
+        )
+
+    return str(row["status"])
+
+
+async def start_activity(
+    pool: asyncpg.Pool,
+    instructor_id: str,
+    course_id: str,
+    activity_no: int,
+) -> dict:
+    """
+    @brief Transitions an activity from DRAFT to ACTIVE for an authorized instructor.
+    @param pool The asyncpg connection pool instance.
+    @param instructor_id The authenticated instructor identifier.
+    @param course_id The target course identifier.
+    @param activity_no The activity number unique within the course.
+    @return A dictionary containing operation status and resulting activity state.
+    @throws HTTPException 403 If instructor is not assigned to the target course.
+    @throws HTTPException 404 If activity does not exist.
+    @throws HTTPException 409 If the current activity state is not DRAFT.
+    """
+    await _ensure_instructor_assigned_to_course(pool, instructor_id, course_id)
+    current_status = await _fetch_activity_status(pool, course_id, activity_no)
+
+    if current_status != "DRAFT":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Invalid activity transition. "
+                "Only DRAFT activities can be started."
+            ),
+        )
+
+    query = """
+        UPDATE activities
+        SET    status = 'ACTIVE',
+               starts_at = NOW()
+        WHERE  course_id::text = $1
+          AND  activity_no = $2
+    """
+    async with pool.acquire() as conn:
+        status_msg = await conn.execute(query, str(course_id), int(activity_no))
+
+    if status_msg != "UPDATE 1":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Activity not found for the specified course and activity number.",
+        )
+
+    return {
+        "status": "success",
+        "course_id": str(course_id),
+        "activity_no": int(activity_no),
+        "activity_status": "ACTIVE",
+    }
+
+
+async def end_activity(
+    pool: asyncpg.Pool,
+    instructor_id: str,
+    course_id: str,
+    activity_no: int,
+) -> dict:
+    """
+    @brief Transitions an activity from ACTIVE to ENDED for an authorized instructor.
+    @param pool The asyncpg connection pool instance.
+    @param instructor_id The authenticated instructor identifier.
+    @param course_id The target course identifier.
+    @param activity_no The activity number unique within the course.
+    @return A dictionary containing operation status and resulting activity state.
+    @throws HTTPException 403 If instructor is not assigned to the target course.
+    @throws HTTPException 404 If activity does not exist.
+    @throws HTTPException 409 If the current activity state is not ACTIVE.
+    """
+    await _ensure_instructor_assigned_to_course(pool, instructor_id, course_id)
+    current_status = await _fetch_activity_status(pool, course_id, activity_no)
+
+    if current_status != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Invalid activity transition. "
+                "Only ACTIVE activities can be ended."
+            ),
+        )
+
+    query = """
+        UPDATE activities
+        SET    status = 'ENDED'
+        WHERE  course_id::text = $1
+          AND  activity_no = $2
+    """
+    async with pool.acquire() as conn:
+        status_msg = await conn.execute(query, str(course_id), int(activity_no))
+
+    if status_msg != "UPDATE 1":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Activity not found for the specified course and activity number.",
+        )
+
+    return {
+        "status": "success",
+        "course_id": str(course_id),
+        "activity_no": int(activity_no),
+        "activity_status": "ENDED",
+    }

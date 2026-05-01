@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS student_course_mapping (
 CREATE TABLE IF NOT EXISTS activities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    activity_no INTEGER NOT NULL,
     title TEXT NOT NULL,
     description TEXT,
     status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'ACTIVE', 'ENDED')),
@@ -58,6 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_mapping_course ON instructor_course_mapping (cour
 CREATE INDEX IF NOT EXISTS idx_mapping_student ON student_course_mapping (student_id);
 CREATE INDEX IF NOT EXISTS idx_mapping_student_course ON student_course_mapping (course_id);
 CREATE INDEX IF NOT EXISTS idx_activities_course ON activities (course_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_course_no ON activities (course_id, activity_no);
 
 -- Optional seed for quick smoke test; replace domain/email before use.
 -- INSERT INTO users (school_email, full_name, role)
