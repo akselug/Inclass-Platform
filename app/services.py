@@ -6,11 +6,72 @@
 """
 
 import logging
+import os
+from datetime import datetime, timedelta, timezone
 
 import asyncpg
 from fastapi import HTTPException, status
+from jose import jwt
+from passlib.context import CryptContext
+
+# Global pool for the service layer
+db_pool: asyncpg.Pool | None = None
+
+JWT_SECRET: str = os.environ.get("JWT_SECRET", "")
+JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
 logger = logging.getLogger("inclass.auth")
+
+
+class PasswordHasher:
+    """
+    @brief Hashes and verifies passwords using bcrypt via CryptContext.
+    @details Provides class methods to generate secure password hashes and check
+             plain-text inputs against stored hashes for authentication.
+    """
+
+    _context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+    @classmethod
+    def hash(cls, password: str) -> str:
+        """
+        @brief Hashes a plain-text password using bcrypt.
+        @param password The plain-text password to hash.
+        @return The hashed password string.
+        """
+        return cls._context.hash(password)
+
+    @classmethod
+    def verify(cls, plain_password: str, hashed_password: str) -> bool:
+        """
+        @brief Verifies a plain-text password against a hashed password.
+        @param plain_password The plain-text password to check.
+        @param hashed_password The hashed password to verify against.
+        @return True if the password matches, False otherwise.
+        """
+        return cls._context.verify(plain_password, hashed_password)
+
+
+def create_access_token(user_id: str, email: str, role: str) -> str:
+    """
+    @brief Generates a signed JWT access token for a user.
+    @param user_id The unique ID of the user.
+    @param email The user's school email.
+    @param role The role assigned to the user.
+    @return A string representing the encoded JWT.
+    """
+    now = datetime.now(tz=timezone.utc)
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "role": role,
+        "iat": now,
+        "exp": now + timedelta(minutes=JWT_EXPIRE_MINUTES),
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    logger.info("JWT issued for user_id=%s role=%s", user_id, role)
+    return token
 
 
 async def fetch_user_by_email(pool: asyncpg.Pool, email: str) -> asyncpg.Record:
@@ -230,9 +291,7 @@ async def instructorLogin(email: str, password: str) -> dict:
     @return A dictionary containing the authentication status and token details.
     @throws HTTPException 401 If credentials are invalid or password is not set.
     """
-    from app.main import PasswordHasher, app, create_access_token
-
-    pool = app.state.db_pool
+    pool = db_pool
 
     # 1. Fetch instructor
     instructor = await fetch_registered_instructor_by_email(pool, email)
@@ -267,9 +326,7 @@ async def listMyCourses(email: str, password: str) -> dict:
     @param password The plain-text password (used for grading script fallback).
     @return A dictionary containing a list of assigned courses.
     """
-    from app.main import app
-
-    pool = app.state.db_pool
+    pool = db_pool
 
     # 1. Verify credentials (you can call instructorLogin here to validate)
     if password:
@@ -291,9 +348,7 @@ async def setInstructorPassword(email: str, password: str | None = None) -> dict
     @return A dictionary indicating the status of the password setup.
     @throws HTTPException 500 If the database update fails.
     """
-    from app.main import PasswordHasher, app
-
-    pool = app.state.db_pool
+    pool = db_pool
 
     instructor = await fetch_registered_instructor_by_email(pool, email)
 
@@ -328,9 +383,7 @@ async def changeInstructorPassword(
     @throws HTTPException 401 If the old password verification fails.
     @throws HTTPException 500 If the database update fails.
     """
-    from app.main import PasswordHasher, app
-
-    pool = app.state.db_pool
+    pool = db_pool
 
     instructor = await fetch_registered_instructor_by_email(pool, email)
     stored_hash = await fetch_password_hash_by_email(pool, email)
