@@ -45,6 +45,31 @@ export const authApi = {
     return { token };
   },
 
+  getGoogleConfig: async (): Promise<{ clientId: string; schoolEmailDomain: string }> => {
+    const envClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '');
+    if (envClientId) {
+      return {
+        clientId: envClientId,
+        schoolEmailDomain: String(import.meta.env.VITE_SCHOOL_EMAIL_DOMAIN ?? ''),
+      };
+    }
+
+    const res = await apiClient.get('/auth/google/config');
+    const data = res.data as Record<string, any>;
+    return {
+      clientId: String(data.client_id ?? ''),
+      schoolEmailDomain: String(data.school_email_domain ?? ''),
+    };
+  },
+
+  googleStudentLogin: async (idToken: string): Promise<{ token: string }> => {
+    const res = await apiClient.post('/auth/google/student', { id_token: idToken });
+    const data = res.data as Record<string, any>;
+    const token = String(data.access_token ?? '');
+    if (!token) throw new Error('No access token returned');
+    return { token };
+  },
+
   getMe: async (): Promise<User> => {
     const res = await apiClient.get('/auth/me');
     return mapMeToUser(res.data as Record<string, any>);

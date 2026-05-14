@@ -1,15 +1,142 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../api/authApi';
 import { BookOpen, Mail, Lock } from 'lucide-react';
 
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential?: string }) => void;
+            auto_select?: boolean;
+          }) => void;
+          renderButton: (
+            element: HTMLElement,
+            options: {
+              theme?: 'outline' | 'filled_blue' | 'filled_black';
+              size?: 'large' | 'medium' | 'small';
+              type?: 'standard' | 'icon';
+              text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+              shape?: 'rectangular' | 'pill' | 'circle' | 'square';
+              logo_alignment?: 'left' | 'center';
+              width?: number;
+            }
+          ) => void;
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_SCRIPT_ID = 'google-identity-services';
+
 export const StudentLoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  const [googleButtonReady, setGoogleButtonReady] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  const persistStudentSession = async (token: string) => {
+    localStorage.setItem('demo_token', token);
+    localStorage.setItem('demo_role', 'student');
+
+    const me = await authApi.getMe();
+    localStorage.setItem('demo_user', JSON.stringify(me));
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadGoogleScript = () =>
+      new Promise<void>((resolve, reject) => {
+        if (window.google?.accounts?.id) {
+          resolve();
+          return;
+        }
+
+        const existingScript = document.getElementById(GOOGLE_SCRIPT_ID) as HTMLScriptElement | null;
+        if (existingScript) {
+          existingScript.addEventListener('load', () => resolve(), { once: true });
+          existingScript.addEventListener('error', () => reject(new Error('Google sign-in script could not be loaded.')), { once: true });
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.id = GOOGLE_SCRIPT_ID;
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Google sign-in script could not be loaded.'));
+        document.head.appendChild(script);
+      });
+
+    const initializeGoogleButton = async () => {
+      try {
+        const [config] = await Promise.all([authApi.getGoogleConfig(), loadGoogleScript()]);
+        if (!isMounted || !googleButtonRef.current) return;
+
+        if (!config.clientId) {
+          throw new Error('Google client ID is not configured.');
+        }
+
+        window.google?.accounts.id.initialize({
+          client_id: config.clientId,
+          auto_select: false,
+          callback: async (response) => {
+            setError('');
+
+            if (!response.credential) {
+              setError('Google sign-in did not return a credential.');
+              return;
+            }
+
+            try {
+              setIsGoogleLoading(true);
+              const { token } = await authApi.googleStudentLogin(response.credential);
+              await persistStudentSession(token);
+              navigate('/student/dashboard');
+            } catch (err: any) {
+              const message = err.response?.data?.detail || err.message || 'Google sign-in failed';
+              setError(message);
+            } finally {
+              setIsGoogleLoading(false);
+            }
+          },
+        });
+
+        googleButtonRef.current.innerHTML = '';
+        window.google?.accounts.id.renderButton(googleButtonRef.current, {
+          type: 'standard',
+          theme: 'outline',
+          size: 'large',
+          text: 'signin_with',
+          shape: 'pill',
+          logo_alignment: 'left',
+          width: 360,
+        });
+        setGoogleButtonReady(true);
+      } catch (err: any) {
+        if (isMounted) {
+          setError(err.message || 'Google sign-in could not be initialized.');
+        }
+      }
+    };
+
+    initializeGoogleButton();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,11 +151,7 @@ export const StudentLoginPage: React.FC = () => {
       setIsLoading(true);
       const { token } = await authApi.login('STUDENT', email, password);
 
-      localStorage.setItem('demo_token', token);
-      localStorage.setItem('demo_role', 'student');
-      
-      const me = await authApi.getMe();
-      localStorage.setItem('demo_user', JSON.stringify(me));
+      await persistStudentSession(token);
 
       navigate('/student/dashboard');
     } catch (err: any) {
@@ -106,6 +229,22 @@ export const StudentLoginPage: React.FC = () => {
               {isLoading ? 'Processing...' : 'Sign In'}
             </button>
           </form>
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-gray-200" />
+            <span className="text-xs font-bold uppercase tracking-wide text-gray-400">or</span>
+            <div className="h-px flex-1 bg-gray-200" />
+          </div>
+
+          <div className="flex flex-col items-center">
+            <div
+              ref={googleButtonRef}
+              className={googleButtonReady ? '' : 'h-11 w-full rounded-full border border-gray-300 bg-gray-50'}
+            />
+            {isGoogleLoading && (
+              <p className="mt-3 text-sm font-semibold text-gray-500">Signing in with Google...</p>
+            )}
+          </div>
 
           <div className="mt-6 text-center space-y-2">
             <p className="text-sm text-gray-600">

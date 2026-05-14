@@ -112,6 +112,14 @@ class GoogleTokenRequest(BaseModel):
     id_token: str
 
 
+class GoogleConfigResponse(BaseModel):
+    """
+    @brief Public Google Sign-In configuration used by the browser frontend.
+    """
+    client_id: str
+    school_email_domain: str
+
+
 class AuthResponse(BaseModel):
     """
     @brief Response model for successful authentication.
@@ -245,6 +253,22 @@ def enforce_school_email(email: str) -> None:
 
 
 
+
+
+@app.get(
+    "/auth/google/config",
+    response_model=GoogleConfigResponse,
+    summary="Google Sign-In browser configuration",
+    tags=["Authentication"],
+)
+async def google_sign_in_config() -> GoogleConfigResponse:
+    """
+    @brief Returns public Google Sign-In settings needed by the frontend.
+    """
+    return GoogleConfigResponse(
+        client_id=GOOGLE_CLIENT_ID,
+        school_email_domain=SCHOOL_EMAIL_DOMAIN,
+    )
 
 
 @app.post(

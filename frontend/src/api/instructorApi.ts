@@ -1,5 +1,4 @@
 
-import { isAxiosError } from 'axios';
 import { apiClient } from './client';
 import type { Course, Activity, ActivityLog } from '../types';
 
@@ -51,15 +50,6 @@ const mockLogs: ActivityLog[] = [
 
 const MOCK_ACTIVITY_LOG_PREFIX = 'mockActivityLog:';
 const MOCK_PROGRESS_PREFIX = 'studentProgress:';
-
-const shouldUseMockFallback = (error: unknown) => {
-  if (!isAxiosError(error)) return true;
-  if (!error.response) return true;
-
-  const statusCode = error.response.status;
-  const hasDemoToken = localStorage.getItem('demo_token') === 'mock-jwt-token';
-  return statusCode === 404 || statusCode === 501 || (statusCode === 401 && hasDemoToken);
-};
 
 const normalizeActivityStatus = (value: unknown): Activity['status'] => {
   const status = String(value ?? '').toUpperCase();
@@ -173,8 +163,7 @@ export const instructorApi = {
       const response = await apiClient.get('/instructor/courses');
       const rawCourses = Array.isArray(response.data) ? response.data : response.data?.courses ?? [];
       return rawCourses.map((raw: Record<string, unknown>) => normalizeCourse(raw));
-    } catch (error) {
-      if (!shouldUseMockFallback(error)) throw error;
+    } catch {
       return new Promise<Course[]>((resolve) => setTimeout(() => resolve(mockCourses), 300));
     }
   },
@@ -186,8 +175,7 @@ export const instructorApi = {
       });
       const rawActivities = Array.isArray(response.data) ? response.data : response.data?.activities ?? [];
       return rawActivities.map((raw: Record<string, unknown>) => normalizeActivity(raw, courseId));
-    } catch (error) {
-      if (!shouldUseMockFallback(error)) throw error;
+    } catch {
       return new Promise<Activity[]>((resolve) => 
         setTimeout(() => resolve(mockActivities.filter(a => a.courseId === courseId)), 300)
       );
@@ -203,8 +191,7 @@ export const instructorApi = {
         objectives: data.learningObjectives,
       });
       return normalizeActivity(response.data as Record<string, unknown>, courseId);
-    } catch (error) {
-      if (!shouldUseMockFallback(error)) throw error;
+    } catch {
       return new Promise<Activity>((resolve) => {
         setTimeout(() => {
           const newActivity: Activity = {
@@ -228,8 +215,7 @@ export const instructorApi = {
         objectives: data.learningObjectives,
       });
       return { ...activity, ...data };
-    } catch (error) {
-      if (!shouldUseMockFallback(error)) throw error;
+    } catch {
       return new Promise<Activity>((resolve, reject) => {
         setTimeout(() => {
           const index = mockActivities.findIndex(a => a.id === activityId);
@@ -251,8 +237,7 @@ export const instructorApi = {
         params: { course_id: activity.courseId, activity_no: activity.activityNumber },
       });
       return { ...activity, status: 'ACTIVE' };
-    } catch (error) {
-      if (!shouldUseMockFallback(error)) throw error;
+    } catch {
       return instructorApi.updateActivity(activityId, { status: 'ACTIVE' });
     }
   },
@@ -264,8 +249,7 @@ export const instructorApi = {
         params: { course_id: activity.courseId, activity_no: activity.activityNumber },
       });
       return { ...activity, status: 'ENDED' };
-    } catch (error) {
-      if (!shouldUseMockFallback(error)) throw error;
+    } catch {
       return instructorApi.updateActivity(activityId, { status: 'ENDED' });
     }
   },
@@ -277,8 +261,7 @@ export const instructorApi = {
         params: { course_id: activity.courseId, activity_no: activity.activityNumber },
       });
       return { ...activity, status: 'ENDED' };
-    } catch (error) {
-      if (!shouldUseMockFallback(error)) throw error;
+    } catch {
       return instructorApi.updateActivity(activityId, { status: 'ENDED' });
     }
   },
