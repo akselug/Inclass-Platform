@@ -1408,6 +1408,108 @@ async def submitManualGrade(
     }
 
 
+async def listActivityLogs(email: str, password: str, activity_id: str) -> dict:
+    """
+    @brief Lists score and objective events for one activity.
+    @details The requesting instructor must be assigned to the activity course.
+    """
+    pool = db_pool
+
+    if password:
+        await instructorLogin(email, password)
+
+    instructor = await fetch_registered_instructor_by_email(pool, email)
+
+    async with pool.acquire() as conn:
+        activity = await conn.fetchrow(
+            """
+            SELECT a.id, a.course_id
+            FROM   activities a
+            JOIN   instructor_course_mapping icm
+                   ON icm.course_id = a.course_id
+                  AND icm.instructor_id = $2
+            WHERE  a.id::text = $1
+            LIMIT  1
+            """,
+            str(activity_id),
+            instructor["id"],
+        )
+
+        if activity is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Activity not found or not available for this instructor.",
+            )
+
+        rows = await conn.fetch(
+            """
+            SELECT *
+            FROM (
+                SELECT
+                    osl.id::text AS id,
+                    osl.activity_id::text AS activity_id,
+                    COALESCE(u.full_name, u.school_email) AS student_name,
+                    u.school_email AS student_email,
+                    osl.total_score::float AS score,
+                    jsonb_build_object(
+                        'objective_index', osl.objective_index,
+                        'objective_text', osl.objective_text,
+                        'score_delta', osl.score_delta,
+                        'answer', osl.metadata ->> 'answer',
+                        'matched_words', osl.metadata -> 'matched_words',
+                        'grading_type', osl.metadata ->> 'grading_type'
+                    ) AS objective_metadata,
+                    'OBJECTIVE_SCORE' AS event_type,
+                    osl.created_at AS event_timestamp
+                FROM objective_score_logs osl
+                JOIN users u ON u.id = osl.student_id
+                WHERE osl.activity_id = $1
+
+                UNION ALL
+
+                SELECT
+                    score.id::text AS id,
+                    score.activity_id::text AS activity_id,
+                    COALESCE(u.full_name, u.school_email) AS student_name,
+                    u.school_email AS student_email,
+                    score.score::float AS score,
+                    jsonb_build_object(
+                        'grading_type', score.grading_type,
+                        'note', score.note
+                    ) AS objective_metadata,
+                    CASE
+                        WHEN score.grading_type = 'manual' THEN 'MANUAL_GRADE'
+                        ELSE 'AUTO_SCORE'
+                    END AS event_type,
+                    score.updated_at AS event_timestamp
+                FROM activity_scores score
+                JOIN users u ON u.id = score.student_id
+                WHERE score.activity_id = $1
+            ) AS activity_logs
+            ORDER BY event_timestamp DESC
+            """,
+            activity["id"],
+        )
+
+    logs = []
+    for row in rows:
+        timestamp = row["event_timestamp"]
+        logs.append(
+            {
+                "id": row["id"],
+                "activityId": row["activity_id"],
+                "studentName": row["student_name"],
+                "studentEmail": row["student_email"],
+                "score": row["score"],
+                "objectiveMetadata": row["objective_metadata"],
+                "timestamp": timestamp.isoformat() if timestamp else None,
+                "eventType": row["event_type"],
+            }
+        )
+
+    return {"logs": logs}
+
+
 async def _upsert_student_activity_progress(
     conn: asyncpg.Connection,
     student_id: str,
@@ -1564,6 +1666,25 @@ async def listActivities(
     if password: await instructorLogin(email, password)
     instructor = await fetch_registered_instructor_by_email(pool, email)
     await _ensure_instructor_assigned_to_course(pool, str(instructor["id"]), course_id)
-    rows = await pool.fetch("SELECT id, activity_no, title, description, status FROM activities WHERE course_id::text = $1 ORDER BY activity_no ASC", course_id)
-    activities = [{"activity_id": str(r["id"]), "activity_no": r["activity_no"], "title": r["title"], "status": r["status"]} for r in rows]
+    rows = await pool.fetch(
+        """
+        SELECT id, activity_no, title, description, objectives, status
+        FROM activities
+        WHERE course_id::text = $1
+        ORDER BY activity_no ASC
+        """,
+        course_id,
+    )
+    activities = [
+        {
+            "activity_id": str(r["id"]),
+            "course_id": str(course_id),
+            "activity_no": r["activity_no"],
+            "title": r["title"],
+            "activity_text": r["description"],
+            "objectives": _coerce_objectives_payload(r["objectives"]),
+            "status": r["status"],
+        }
+        for r in rows
+    ]
     return {"activities": activities}

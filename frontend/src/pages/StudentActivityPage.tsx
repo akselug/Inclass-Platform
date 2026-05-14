@@ -128,9 +128,10 @@ export const StudentActivityPage: React.FC = () => {
         if (!(err instanceof StudentActivityAccessError)) return;
         if (err.reason !== 'ENDED' && err.reason !== 'NOT_STARTED') return;
 
+        const activityStatus = err.reason === 'ENDED' ? 'ENDED' : 'NOT_STARTED';
         setError(err.message);
         setActivity((currentActivity) =>
-          currentActivity ? { ...currentActivity, status: err.reason } : currentActivity,
+          currentActivity ? { ...currentActivity, status: activityStatus } : currentActivity,
         );
       }
     }, 3000);
@@ -179,8 +180,9 @@ export const StudentActivityPage: React.FC = () => {
       if (err instanceof StudentActivityAccessError) {
         setError(err.message);
         if (err.reason === 'ENDED' || err.reason === 'NOT_STARTED') {
+          const activityStatus = err.reason === 'ENDED' ? 'ENDED' : 'NOT_STARTED';
           setActivity((currentActivity) =>
-            currentActivity ? { ...currentActivity, status: err.reason } : currentActivity,
+            currentActivity ? { ...currentActivity, status: activityStatus } : currentActivity,
           );
         }
       } else {

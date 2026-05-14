@@ -125,3 +125,35 @@ class TestManualGrading:
         )
 
         assert resp.status_code == 401
+
+
+class TestActivityLogs:
+    """GET /instructor/activities/{activity_id}/logs endpoint behavior."""
+
+    async def test_activity_logs_returns_events(
+        self, async_client, mock_db_pool, override_instructor_dep
+    ):
+        """Authorized instructor can list score events for an activity."""
+        fake_result = {
+            "logs": [
+                {
+                    "id": "log-1",
+                    "activityId": "activity-1",
+                    "studentName": "b@mef.edu.tr",
+                    "studentEmail": "b@mef.edu.tr",
+                    "score": 2,
+                    "objectiveMetadata": {"completed": True},
+                    "timestamp": "2026-05-14T10:00:00+00:00",
+                    "eventType": "SUBMISSION",
+                }
+            ]
+        }
+        with patch("app.main.listActivityLogs", new_callable=AsyncMock) as mock_logs:
+            mock_logs.return_value = fake_result
+
+            resp = await async_client.get("/instructor/activities/activity-1/logs")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["logs"][0]["studentName"] == "b@mef.edu.tr"
+        assert body["logs"][0]["score"] == 2

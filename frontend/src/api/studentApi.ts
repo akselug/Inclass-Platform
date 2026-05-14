@@ -77,6 +77,7 @@ interface MockProgress {
 
 const mockProgressByKey: Record<string, MockProgress> = {};
 const MOCK_TOTAL_OBJECTIVES = 2;
+const MOCK_ACTIVITY_LOG_PREFIX = 'mockActivityLog:';
 
 export const getMockProgressKey = (studentEmail: string, activityId: string) =>
   `studentProgress:${studentEmail}:${activityId}`;
@@ -154,7 +155,7 @@ const throwBackendChatError = (error: unknown): never => {
   if (isAxiosError(error)) {
     const statusCode = error.response?.status;
     if (statusCode === 401 || statusCode === 403 || statusCode === 404) {
-      throwAccessError(error);
+      return throwAccessError(error);
     }
   }
 
@@ -165,7 +166,7 @@ const throwBackendActivityError = (error: unknown): never => {
   if (isAxiosError(error)) {
     const statusCode = error.response?.status;
     if (statusCode === 401 || statusCode === 403 || statusCode === 404) {
-      throwAccessError(error);
+      return throwAccessError(error);
     }
   }
 
@@ -260,6 +261,30 @@ const readStoredMockProgress = (key: string): MockProgress | null => {
 const persistMockProgress = (key: string, progress: MockProgress) => {
   mockProgressByKey[key] = progress;
   localStorage.setItem(key, JSON.stringify(progress));
+};
+
+const persistMockActivityLog = (
+  activityId: string,
+  studentEmail: string,
+  score: number,
+  eventType: string,
+  objectiveMetadata: Record<string, unknown>,
+) => {
+  const timestamp = new Date().toISOString();
+  const id = `${activityId}:${studentEmail}:${eventType}:${timestamp}`;
+
+  localStorage.setItem(
+    `${MOCK_ACTIVITY_LOG_PREFIX}${id}`,
+    JSON.stringify({
+      id,
+      activityId,
+      studentName: studentEmail,
+      score,
+      objectiveMetadata,
+      timestamp,
+      eventType,
+    }),
+  );
 };
 
 const stripObjectiveFields = (raw: Record<string, unknown>): Record<string, unknown> => {
@@ -459,12 +484,22 @@ const runMockChat = async (activityId: string, answer: string): Promise<StudentC
     scoreDelta = 1;
     miniLesson = 'Active retrieval means pulling an idea from memory before seeing the answer. That effort makes the learning stickier than rereading alone.';
     tutorMessage = `Nice, you earned +1 for active retrieval. Your score is now ${progress.score}.`;
+    persistMockActivityLog(activityId, studentEmail, progress.score, 'OBJECTIVE_SCORE', {
+      objective: 'Active retrieval',
+      answer,
+      grading_type: 'mock',
+    });
   } else if (mentionsFeedback && !progress.awardedFeedback) {
     progress.awardedFeedback = true;
     progress.score += 1;
     scoreDelta = 1;
     miniLesson = 'Feedback works best when it points to the mistake and gives the learner a chance to revise, so the correction becomes part of the next attempt.';
     tutorMessage = `Strong connection, you earned +1 for feedback and correcting mistakes. Your score is now ${progress.score}.`;
+    persistMockActivityLog(activityId, studentEmail, progress.score, 'OBJECTIVE_SCORE', {
+      objective: 'Feedback and correcting mistakes',
+      answer,
+      grading_type: 'mock',
+    });
   } else if (
     (mentionsActiveRetrieval && progress.awardedActiveRetrieval) ||
     (mentionsFeedback && progress.awardedFeedback)
@@ -477,6 +512,10 @@ const runMockChat = async (activityId: string, answer: string): Promise<StudentC
 
   if (progress.completed) {
     tutorMessage = `Excellent work, you completed the activity. Your final score is ${progress.score}.`;
+    persistMockActivityLog(activityId, studentEmail, progress.score, 'SUBMISSION', {
+      completed: true,
+      grading_type: 'mock',
+    });
   } else if (nextQuestion) {
     tutorMessage = `${tutorMessage}\n\n${nextQuestion}`;
   }
@@ -544,7 +583,7 @@ export const studentApi = {
       if (shouldUseMockFallback(error)) {
         return getMockStudentCourses();
       }
-      throwAccessError(error);
+      return throwAccessError(error);
     }
   },
 
@@ -561,13 +600,13 @@ export const studentApi = {
       return requireOpenActivity(normalizeActivityDetail(response.data, activityId));
     } catch (error) {
       if (source === 'backend') {
-        throwBackendActivityError(error);
+        return throwBackendActivityError(error);
       }
 
       if (shouldUseMockFallback(error)) {
         return getMockStudentActivity(activityId);
       }
-      throwAccessError(error);
+      return throwAccessError(error);
     }
   },
 
@@ -585,13 +624,13 @@ export const studentApi = {
       return normalizeChatResponse(response.data);
     } catch (error) {
       if (source === 'backend') {
-        throwBackendChatError(error);
+        return throwBackendChatError(error);
       }
 
       if (shouldUseMockFallback(error)) {
         return runMockChat(activityId, answer);
       }
-      throwAccessError(error);
+      return throwAccessError(error);
     }
   },
 };

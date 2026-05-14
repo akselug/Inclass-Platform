@@ -55,6 +55,7 @@ from app.services import (
     updateActivity,
     submitManualGrade,
     getStudentActivity,
+    listActivityLogs,
 )
 
 GOOGLE_CLIENT_ID: str = os.environ["GOOGLE_CLIENT_ID"]
@@ -1119,6 +1120,29 @@ async def api_submit_manual_grade(
         student_email=body.student_email,
         score=body.score,
         note=body.note
+    )
+
+
+@app.get(
+    "/instructor/activities/{activity_id}/logs",
+    summary="List activity score logs",
+    tags=["Instructor"],
+)
+async def api_list_activity_logs(
+    request: Request,
+    activity_id: str,
+    current_user: dict = Depends(verify_instructor),
+) -> dict:
+    """
+    @brief Returns score and objective events for an instructor-owned activity.
+    """
+    fallback_creds = await _extract_grading_fallback_credentials(request)
+    password = fallback_creds.get("password", "")
+
+    return await listActivityLogs(
+        email=current_user["email"],
+        password=password,
+        activity_id=activity_id,
     )
 
 if __name__ == "__main__":
